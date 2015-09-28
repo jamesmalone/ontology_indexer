@@ -5,6 +5,9 @@ __author__ = 'malone'
 from ontospy import ontospy
 import itertools
 import json
+import datetime
+import pysolr
+
 
 
 class OntologyClass(object):
@@ -17,6 +20,7 @@ class OntologyClass(object):
         self.descendants = []
         self.iri = ""
         self.description = []
+        self.pub_date = ""
 
     def print_self(self):
         print "for class: %s" %self.iri
@@ -104,6 +108,8 @@ def add_all_to_json(graph):
                     ontology_class.set_ancestors(all_ancestors)
                     ontology_class.set_direct_children(direct_children)
                     ontology_class.set_direct_parents(direct_parents)
+                    #set date so it is compatible with solr index using isoformat (also json serializable)
+                    ontology_class.pub_date = datetime.datetime.today().isoformat()
 
                     ontology_class.print_self()
                     print json.dumps(ontology_class, cls=MyEncoder)
