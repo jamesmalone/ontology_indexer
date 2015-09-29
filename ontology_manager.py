@@ -1,13 +1,21 @@
-import sys
-
-__author__ = 'malone'
-
+import datetime
 from ontospy import ontospy
 import itertools
 import json
-import datetime
-import pysolr
+import sys
+from solr_writer import write_to_solr
 
+
+__author__ = 'malone'
+
+
+class JSONOntology():
+    def __init__(self):
+        self.class_in_json = []
+
+    def print_all(self):
+        for doc in self.class_in_json:
+            print doc
 
 
 class OntologyClass(object):
@@ -18,21 +26,27 @@ class OntologyClass(object):
         self.ancestors = []
         self.direct_children = []
         self.descendants = []
-        self.iri = ""
+        self.uris = []
         self.description = []
         self.indexed_date = ""
+        self.text_auto = "empty"
 
     def print_self(self):
-        print "for class: %s" %self.iri
+        print "for class: %s" %self.uris
         print "direct parents: %s" %self.direct_parents
         print "ancestors are (%d) %s" %(len(self.ancestors), self.ancestors)
         print "direct subclass: %s" %self.direct_children
         print "descendants are (%d) %s" %(len(self.descendants), self.descendants)
+        print "indexed date: %s" %self.indexed_date
         print ""
 
-    def set_iri(self, iri):
-        print iri.uri
-        self.iri = iri.uri
+    def set_uris(self, uris):
+        if isinstance(uris, list):
+            for o in uris:
+                temp_uri = o.uri
+                self.uris.append(temp_uri.toPython())
+        else:
+            self.uris.append(uris.uri.toPython())
 
 
     def set_direct_parents(self, direct_parents):
@@ -55,10 +69,15 @@ class OntologyClass(object):
             temp_uri = o.uri
             self.ancestors.append(temp_uri.toPython())
 
-class MyEncoder(json.JSONEncoder):
+    def to_JSON(self):
+        return json.dumps(self, default=lambda o: o.__dict__,
+            sort_keysv=True, indent=4)
+
+#encode the object as python json object
+class MyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if not isinstance(obj, OntologyClass):
-            return super(MyEncoder, self).default(obj)
+            return super(MyJSONEncoder, self).default(obj)
         return obj.__dict__
 
 
@@ -69,8 +88,8 @@ def load_ontology(ontology_location):
 
 def add_all_to_json(graph):
 
+    json_container = []
     classes_analysed = set()
-    json_dictionary = {}
 
     #get top level classes
     top_layer = graph.toplayer
@@ -103,16 +122,22 @@ def add_all_to_json(graph):
 
                     #write to obejct for serialising to json
                     ontology_class = OntologyClass()
-                    ontology_class.set_iri(entity)
+                    ontology_class.set_uris(entity)
                     ontology_class.set_descendants(all_descendants)
                     ontology_class.set_ancestors(all_ancestors)
                     ontology_class.set_direct_children(direct_children)
                     ontology_class.set_direct_parents(direct_parents)
-                    #set date so it is compatible with solr index using isoformat (also json serializable)
-                    ontology_class.indexed_date = datetime.datetime.today().isoformat()
 
-                    ontology_class.print_self()
-                    print json.dumps(ontology_class, cls=MyEncoder)
+                    #set datetime
+                    date_now = datetime.datetime.today().strftime("%Y-%m-%dT00:00:00Z")
+                    print date_now
+
+                    ontology_class.indexed_date = date_now
+
+                    #ontology_class.print_self()
+                    #add to container
+                    json_container.append(ontology_class.__dict__)
+
                     next_children.append(direct_children)
                 else:
                     print '**skipping** %s already in list' %entity
@@ -121,7 +146,9 @@ def add_all_to_json(graph):
             children = list(itertools.chain(*next_children))
 
 
-    print len(classes_analysed), classes_analysed
+    #print len(classes_analysed), classes_analysed
+
+    return json_container
 
 
 def get_class_information(graph, entity):
@@ -144,18 +171,19 @@ def get_class_information(graph, entity):
 
 
 # Start execution here!
-#take one parameter which is the ontology location - file location or URL
 if __name__ == '__main__':
+
     if sys.argv[1:]:
+        #if main method called get the ontology as parameter
         ontology_location = sys.argv[1:]
-        print type(ontology_location[0])
         print "Starting ontology population script..."
         graph = load_ontology(ontology_location[0])
         #graph = load_ontology('/Users/malone/Desktop/vehicle_ontology.owl')
         print "Ontology loading complete"
-        add_all_to_json(graph=graph)
+        container = add_all_to_json(graph=graph)
+        print container
+        write_to_solr(container)
     else:
         print "no ontology to load - please specify a file or URL as ontology location"
-
 
 
