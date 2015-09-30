@@ -69,6 +69,19 @@ class OntologyClass(object):
             temp_uri = o.uri
             self.ancestors.append(temp_uri.toPython())
 
+    def set_synonyms(self, synonyms):
+        for a in synonyms:
+            self.synonyms.append(a.value)
+
+    def set_label(self, labels):
+        for a in labels:
+            self.labels.append(a.value)
+
+    def create_text_auto_from_labels(self):
+        #merge labels
+        if self.labels:
+            self.text_auto = ' '.join(self.labels)
+
     def to_JSON(self):
         return json.dumps(self, default=lambda o: o.__dict__,
             sort_keysv=True, indent=4)
@@ -88,7 +101,7 @@ class OntologyManager():
         #annotation property IRIs which are required to be indexed
         self.synonym_uri = ""
         #primary rendering label - default is rdfs:label
-        self.primary_label = "http://www.w3.org/2000/01/rdf-schema#label"
+        self.primary_label_uri = "http://www.w3.org/2000/01/rdf-schema#label"
 
     #load the ontology into the manager
     def load_ontology(self, ontology_location):
@@ -110,18 +123,10 @@ class OntologyManager():
         all_ancestors = entity.ancestors()
         return all_descendants, direct_children, all_ancestors, direct_parents
 
-
-    def get_synonyms(self, entity, synonym_uri):
-
-        print synonym_uri
-
-
-        property = rdflib.URIRef("http://www.vehicles/synonym")
-        synonyms = entity.getValuesForProperty(property)
-
-        print synonyms[0].value
-
-        return synonyms
+    def get_annotations(self, entity, annotation_uri):
+        property = rdflib.URIRef(annotation_uri)
+        annotations = entity.getValuesForProperty(property)
+        return annotations
 
     #add all data to dictionary
     def add_all_to_dictionary(self, graph):
@@ -168,20 +173,19 @@ class OntologyManager():
                         ontology_class.set_direct_parents(direct_parents)
 
                         #add annotations
-                        synonyms = self.get_synonyms(entity, self.synonym_uri)
-                        print synonyms
+                        synonyms = self.get_annotations(entity, self.synonym_uri)
+                        ontology_class.set_synonyms(synonyms)
+                        labels = self.get_annotations(entity, self.primary_label_uri)
+                        ontology_class.set_label(labels)
 
-                        if synonyms:
-                            print synonyms
-                        else:
-                            print "no synonyms"
-
+                        #form autocomplete field
+                        #you can form this in solr but probably to do it here to control it
+                        #example below merges all labels but you could also use synonyms
+                        ontology_class.create_text_auto_from_labels()
 
 
                         #set datetime
                         date_now = datetime.datetime.today().strftime("%Y-%m-%dT00:00:00Z")
-                        print date_now
-
                         ontology_class.indexed_date = date_now
 
                         #add to container
@@ -197,6 +201,8 @@ class OntologyManager():
 
 
 # execute if class called to run
+#below is a basic worflow to create the dictionary
+# required to populate the solr index using pysolr
 if __name__ == '__main__':
 
     if sys.argv[1:]:
@@ -206,15 +212,19 @@ if __name__ == '__main__':
 
         #new ontology manager class
         manager = OntologyManager()
+        #set uri properties for annotations you want to include such as synonym and label
         manager.synonym_uri = "http://www.vehicles/synonym"
 
         location = ontology_location[0]
 
         graph = manager.load_ontology(location)
-        #graph = load_ontology('/Users/malone/Desktop/vehicle_ontology.owl')
+        #or load locally if parameter has not been passed using:
+        #graph = load_ontology('/Users/seppblatter/Desktop/fifa_expenses.owl')
         print "Ontology loading complete"
+        #create the dictionary and store in a container
+        # which is a list of OntologyClass objects
         container = manager.add_all_to_dictionary(graph=graph)
-        print container
+        #write this to solr using the solr_writer python script
         write_to_solr(container)
     else:
         print "no ontology to load - please specify a file or URL as ontology location"
