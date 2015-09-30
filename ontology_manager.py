@@ -225,7 +225,8 @@ if __name__ == '__main__':
         # which is a list of OntologyClass objects
         container = manager.add_all_to_dictionary(graph=graph)
         #write this to solr using the solr_writer python script
-        write_to_solr(container)
+        #pass the container and the location of the solr index
+        write_to_solr(container, 'http://localhost:8983/solr/b2note_index/')
     else:
         print "no ontology to load - please specify a file or URL as ontology location"
 
